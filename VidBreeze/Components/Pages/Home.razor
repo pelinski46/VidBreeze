@@ -1,0 +1,154 @@
+﻿@page "/"
+@using VidBreeze.Services
+@inject YTServices ytServices
+
+<h1>Video Downloader</h1>
+
+<div class="container">
+    <div class="form-group">
+        <label for="videoURL">Video URL:</label>
+        <input id="videoURL" @bind="videoURL" placeholder="Enter video URL" @oninput="OnUrlChanged" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <label for="filePath">File name</label>
+        <input id="filePath" @bind="fileName" placeholder="Enter file name" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <label for="videoquality">Video Quality:</label>
+        <InputSelect id="videoquality" @bind-Value="selectedQuality" class="form-control">
+            @if (videoquality.Any())
+            {
+                @foreach (var quality in videoquality)
+                {
+                    <option value="@quality">@quality</option>
+                }
+            }
+        </InputSelect>
+    </div>
+
+    <div class="button-group">
+        <button @onclick="DownloadVideo" class="btn btn-primary">Download</button>
+        <button @onclick="DownloadAudio" class="btn btn-primary">Download only Audio</button>
+    </div>
+
+    <div class="progress mt-3">
+        <div class="progress-bar" role="progressbar" style="@($"width: {progressPercentage}%")" aria-valuenow="@progressPercentage" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+
+    <div class="status-messages mt-2">
+        <p class="status-message">@statusMessage</p>
+    </div>
+</div>
+
+
+@code {
+    private string videoURL;
+    private string fileName;
+    private string filePath;
+    private string statusMessage;
+    private List<string> videoquality = new List<string>();
+    private string selectedQuality;
+    private double progressPercentage;
+    private CancellationTokenSource cancellationTokenSource;
+
+    protected override async Task OnInitializedAsync()
+    {
+
+    }
+
+
+    private async Task OnUrlChanged(ChangeEventArgs e)
+    {
+        videoURL = e.Value.ToString();
+        if (!string.IsNullOrEmpty(videoURL))
+        {
+            videoquality = await ytServices.GetQuality(videoURL);
+            if (videoquality.Any())
+            {
+                selectedQuality = videoquality.First();
+                StateHasChanged();
+            }
+
+        } else
+        {
+            videoquality = new List<string>();
+        }
+
+    }
+
+    private async Task DownloadVideo()
+    {
+
+        statusMessage = "";
+
+        if (string.IsNullOrEmpty(videoURL) || string.IsNullOrEmpty(fileName))
+        {
+
+            statusMessage = "Please provide a video url and filepath";
+            return;
+        }
+        try
+        {
+            filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), $"{fileName}.mp4");
+            var progress = new Progress<double>(percent =>
+            {
+                progressPercentage = percent *100;
+                StateHasChanged();
+            });
+
+            await ytServices.DownloadVideo(videoURL, filePath, selectedQuality, progress);
+            StateHasChanged();
+            statusMessage = $"video downloaded succesfully in {filePath}";
+
+        }
+        catch (Exception ex)
+        {   
+            statusMessage = $"An error happend: {ex.Message}";
+        }
+    }
+
+    private async Task DownloadAudio()
+    {
+        if (string.IsNullOrEmpty(videoURL) || string.IsNullOrEmpty(fileName))
+        {
+            statusMessage = "Please provide a video url and filepath";
+
+            return;
+        }
+        try
+        {
+            var progress = new Progress<double>(percent =>
+            {
+                progressPercentage = percent * 100;
+                StateHasChanged();
+            });
+            filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), $"{fileName}.mp3");
+            await ytServices.DownloadAudio(videoURL, filePath, progress);
+            statusMessage = $"audio downloaded succesfully in {filePath}";
+            
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"An error happend: {ex.Message}";
+        }
+
+        progressPercentage = 0.0;
+        StateHasChanged();
+    }
+
+    private void CancelDownload()
+    {
+        if (cancellationTokenSource != null)
+        {
+            cancellationTokenSource.Cancel();
+            statusMessage = "Cancellation requested.";
+            StateHasChanged();
+        }
+    }
+
+
+
+
+}
